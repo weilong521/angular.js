@@ -10,10 +10,16 @@
  *
  * ngAnimateSwap is a animation-oriented directive that allows for the container to
  * be removed and entered in whenever the associated expression changes. A
- * common usecase for this directive is a rotating banner component which
+ * common usecase for this directive is a rotating banner or slider component which
  * contains one image being present at a time. When the active image changes
  * then the old image will perform a `leave` animation and the new element
  * will be inserted via an `enter` animation.
+ *
+ * @animations
+ * | Animation                        | Occurs                               |
+ * |----------------------------------|--------------------------------------|
+ * | {@link ng.$animate#enter enter}  | when the new element is inserted to the DOM  |
+ * | {@link ng.$animate#leave leave}  | when the old element is removed from the DOM |
  *
  * @example
  * <example name="ngAnimateSwap-directive" module="ngAnimateSwapExample"
@@ -81,12 +87,13 @@
  *  </file>
  * </example>
  */
-var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $rootScope) {
+var ngAnimateSwapDirective = ['$animate', function($animate) {
   return {
     restrict: 'A',
     transclude: 'element',
     terminal: true,
-    priority: 600, // we use 600 here to ensure that the directive is caught before others
+    priority: 550, // We use 550 here to ensure that the directive is caught before others,
+                   // but after `ngIf` (at priority 600).
     link: function(scope, $element, attrs, ctrl, $transclude) {
       var previousElement, previousScope;
       scope.$watchCollection(attrs.ngAnimateSwap || attrs['for'], function(value) {
@@ -98,10 +105,10 @@ var ngAnimateSwapDirective = ['$animate', '$rootScope', function($animate, $root
           previousScope = null;
         }
         if (value || value === 0) {
-          previousScope = scope.$new();
-          $transclude(previousScope, function(element) {
-            previousElement = element;
-            $animate.enter(element, null, $element);
+          $transclude(function(clone, childScope) {
+            previousElement = clone;
+            previousScope = childScope;
+            $animate.enter(clone, null, $element);
           });
         }
       });

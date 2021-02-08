@@ -63,18 +63,18 @@ $provide.value("$locale", {
       "d\u00e9c."
     ],
     "STANDALONEMONTH": [
-      "Janvier",
-      "F\u00e9vrier",
-      "Mars",
-      "Avril",
-      "Mai",
-      "Juin",
-      "Juillet",
-      "Ao\u00fbt",
-      "Septembre",
-      "Octobre",
-      "Novembre",
-      "D\u00e9cembre"
+      "janvier",
+      "f\u00e9vrier",
+      "mars",
+      "avril",
+      "mai",
+      "juin",
+      "juillet",
+      "ao\u00fbt",
+      "septembre",
+      "octobre",
+      "novembre",
+      "d\u00e9cembre"
     ],
     "WEEKENDRANGE": [
       5,
@@ -92,7 +92,7 @@ $provide.value("$locale", {
   "NUMBER_FORMATS": {
     "CURRENCY_SYM": "\u20ac",
     "DECIMAL_SEP": ",",
-    "GROUP_SEP": ".",
+    "GROUP_SEP": "\u00a0",
     "PATTERNS": [
       {
         "gSize": 3,
@@ -119,6 +119,7 @@ $provide.value("$locale", {
     ]
   },
   "id": "fr-be",
+  "localeID": "fr_BE",
   "pluralCat": function(n, opt_precision) {  var i = n | 0;  if (i == 0 || i == 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

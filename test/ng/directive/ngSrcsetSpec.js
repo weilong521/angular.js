@@ -1,5 +1,6 @@
-/*jshint scripturl:true*/
 'use strict';
+
+/* eslint-disable no-script-url */
 
 describe('ngSrcset', function() {
   var element;
@@ -28,5 +29,23 @@ describe('ngSrcset', function() {
     $rootScope.$digest();
     expect(element.attr('srcset')).toBe('http://example.com/image1.png 1x,unsafe:javascript:doEvilStuff() 2x');
   }));
-});
 
+  it('should not throw an error if undefined', inject(function($rootScope, $compile) {
+    element = $compile('<img ng-attr-srcset="{{undefined}}">')($rootScope);
+    $rootScope.$digest();
+  }));
+
+  it('should interpolate the expression and bind to srcset', inject(function($compile, $rootScope) {
+    var element = $compile('<img ng-srcset="some/{{id}} 2x"></div>')($rootScope);
+
+    $rootScope.$digest();
+    expect(element.attr('srcset')).toBeUndefined();
+
+    $rootScope.$apply(function() {
+      $rootScope.id = 1;
+    });
+    expect(element.attr('srcset')).toEqual('some/1 2x');
+
+    dealoc(element);
+  }));
+});

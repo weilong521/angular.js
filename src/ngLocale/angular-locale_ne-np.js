@@ -44,7 +44,7 @@ $provide.value("$locale", {
       "\u0938\u094b\u092e",
       "\u092e\u0919\u094d\u0917\u0932",
       "\u092c\u0941\u0927",
-      "\u092c\u093f\u0939\u0940",
+      "\u092c\u093f\u0939\u093f",
       "\u0936\u0941\u0915\u094d\u0930",
       "\u0936\u0928\u093f"
     ],
@@ -119,6 +119,7 @@ $provide.value("$locale", {
     ]
   },
   "id": "ne-np",
+  "localeID": "ne_NP",
   "pluralCat": function(n, opt_precision) {  if (n == 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

@@ -25,7 +25,7 @@ function init {
 function prepare {
 
   echo "-- Cloning code.angularjs.org"
-  git clone git@github.com:angular/code.angularjs.org.git $REPO_DIR --depth=1
+  git clone https://github.com/angular/code.angularjs.org $REPO_DIR --depth=1
 
   echo "-- Updating code.angularjs.org"
 
@@ -59,19 +59,12 @@ function _update_code() {
 
   echo "-- Pushing code.angularjs.org"
   git push origin master
-
-  for backend in "$@" ; do
-    echo "-- Refreshing code.angularjs.org: backend=$backend"
-    curl http://$backend:8003/gitFetchSite.php
-  done
 }
 
 function publish {
-  # The TXT record for backends.angularjs.org is a CSV of the IP addresses for
-  # the currently serving Compute Engine backends.
-  # code.angularjs.org is served out of port 8003 on these backends.
-  backends=("$(dig backends.angularjs.org +short TXT | python -c 'print raw_input()[1:-1].replace(",", "\n")')")
-  _update_code ${backends[@]}
+  # publish updates the code.angularjs.org Github repository
+  # the deployment to Firebase happens via CI
+  _update_code
 }
 
 source $(dirname $0)/../utils.inc

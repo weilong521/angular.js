@@ -12,9 +12,9 @@ describe('$anchorScroll', function() {
         var mockedWin = {
           scrollTo: jasmine.createSpy('$window.scrollTo'),
           scrollBy: jasmine.createSpy('$window.scrollBy'),
-          document: document,
+          document: window.document,
           getComputedStyle: function(elem) {
-            return getComputedStyle(elem);
+            return window.getComputedStyle(elem);
           }
         };
 
@@ -87,8 +87,7 @@ describe('$anchorScroll', function() {
 
     return function($window) {
       forEach(elmSpy, function(spy, id) {
-        var count = map[id] || 0;
-        expect(spy.callCount).toBe(count);
+        expect(spy).toHaveBeenCalledTimes(map[id] || 0);
       });
       expect($window.scrollTo).not.toHaveBeenCalled();
     };
@@ -106,7 +105,7 @@ describe('$anchorScroll', function() {
     return function() {
       spyOn(window, 'jqLiteDocumentLoaded');
       if (fake) {
-        window.jqLiteDocumentLoaded.andCallFake(fake);
+        window.jqLiteDocumentLoaded.and.callFake(fake);
       }
     };
   }
@@ -123,7 +122,7 @@ describe('$anchorScroll', function() {
 
   function fireWindowLoadEvent() {
     return function($browser) {
-      var callback = window.jqLiteDocumentLoaded.mostRecentCall.args[0];
+      var callback = window.jqLiteDocumentLoaded.calls.mostRecent().args[0];
       callback();
       $browser.defer.flush();
     };
@@ -177,7 +176,7 @@ describe('$anchorScroll', function() {
         expectScrollingTo('id=abc')));
 
 
-      it('should scroll to top if hash == "top" and no matching element', inject(
+      it('should scroll to top if hash === "top" and no matching element', inject(
         changeHashAndScroll('top'),
         expectScrollingToTop));
 
@@ -244,7 +243,7 @@ describe('$anchorScroll', function() {
         expectScrollingTo('id=abc')));
 
 
-      it('should scroll to top if hash == "top" and no matching element', inject(
+      it('should scroll to top if hash === "top" and no matching element', inject(
         callAnchorScroll('top'),
         expectScrollingToTop));
 
@@ -253,6 +252,18 @@ describe('$anchorScroll', function() {
         addElements('id=top'),
         callAnchorScroll('top'),
         expectScrollingTo('id=top')));
+
+
+      it('should scroll to element with id "7" if present, with a given hash of type number', inject(
+        addElements('id=7'),
+        callAnchorScroll(7),
+        expectScrollingTo('id=7')));
+
+
+      it('should scroll to element with id "7" if present, with a given hash of type string', inject(
+        addElements('id=7'),
+        callAnchorScroll('7'),
+        expectScrollingTo('id=7')));
     });
   });
 
@@ -382,10 +393,10 @@ describe('$anchorScroll', function() {
 
       return function($rootScope, $window) {
         inject(expectScrollingTo(identifierCountMap));
-        expect($window.scrollBy.callCount).toBe(list.length);
+        expect($window.scrollBy).toHaveBeenCalledTimes(list.length);
         forEach(list, function(offset, idx) {
           // Due to sub-pixel rendering, there is a +/-1 error margin in the actual offset
-          var args = $window.scrollBy.calls[idx].args;
+          var args = $window.scrollBy.calls.argsFor(idx);
           expect(args[0]).toBe(0);
           expect(Math.abs(offset + args[1])).toBeLessThan(1);
         });

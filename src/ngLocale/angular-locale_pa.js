@@ -111,14 +111,15 @@ $provide.value("$locale", {
         "maxFrac": 2,
         "minFrac": 2,
         "minInt": 1,
-        "negPre": "-\u00a4",
+        "negPre": "-\u00a4\u00a0",
         "negSuf": "",
-        "posPre": "\u00a4",
+        "posPre": "\u00a4\u00a0",
         "posSuf": ""
       }
     ]
   },
   "id": "pa",
+  "localeID": "pa",
   "pluralCat": function(n, opt_precision) {  if (n >= 0 && n <= 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

@@ -111,14 +111,15 @@ $provide.value("$locale", {
         "maxFrac": 2,
         "minFrac": 2,
         "minInt": 1,
-        "negPre": "-\u200e\u00a4",
-        "negSuf": "",
-        "posPre": "\u200e\u00a4",
-        "posSuf": ""
+        "negPre": "\u061c-",
+        "negSuf": "\u00a0\u061c\u00a4",
+        "posPre": "",
+        "posSuf": "\u00a0\u061c\u00a4"
       }
     ]
   },
   "id": "fa",
+  "localeID": "fa",
   "pluralCat": function(n, opt_precision) {  var i = n | 0;  if (i == 0 || n == 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

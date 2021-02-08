@@ -57,24 +57,24 @@ $provide.value("$locale", {
       "jun.",
       "jul.",
       "ago.",
-      "sept.",
+      "sep.",
       "oct.",
       "nov.",
       "dic."
     ],
     "STANDALONEMONTH": [
-      "Enero",
-      "Febrero",
-      "Marzo",
-      "Abril",
-      "Mayo",
-      "Junio",
-      "Julio",
-      "Agosto",
-      "Septiembre",
-      "Octubre",
-      "Noviembre",
-      "Diciembre"
+      "enero",
+      "febrero",
+      "marzo",
+      "abril",
+      "mayo",
+      "junio",
+      "julio",
+      "agosto",
+      "septiembre",
+      "octubre",
+      "noviembre",
+      "diciembre"
     ],
     "WEEKENDRANGE": [
       5,
@@ -108,17 +108,18 @@ $provide.value("$locale", {
       {
         "gSize": 3,
         "lgSize": 3,
-        "maxFrac": 2,
-        "minFrac": 2,
+        "maxFrac": 0,
+        "minFrac": 0,
         "minInt": 1,
-        "negPre": "-\u00a4",
+        "negPre": "-\u00a4\u00a0",
         "negSuf": "",
-        "posPre": "\u00a4",
+        "posPre": "\u00a4\u00a0",
         "posSuf": ""
       }
     ]
   },
   "id": "es-co",
+  "localeID": "es_CO",
   "pluralCat": function(n, opt_precision) {  if (n == 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

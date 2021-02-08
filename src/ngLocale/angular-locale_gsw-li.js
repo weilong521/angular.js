@@ -4,8 +4,8 @@ var PLURAL_CATEGORY = {ZERO: "zero", ONE: "one", TWO: "two", FEW: "few", MANY: "
 $provide.value("$locale", {
   "DATETIME_FORMATS": {
     "AMPMS": [
-      "vorm.",
-      "nam."
+      "am Vormittag",
+      "am Namittag"
     ],
     "DAY": [
       "Sunntig",
@@ -119,6 +119,7 @@ $provide.value("$locale", {
     ]
   },
   "id": "gsw-li",
+  "localeID": "gsw_LI",
   "pluralCat": function(n, opt_precision) {  if (n == 1) {    return PLURAL_CATEGORY.ONE;  }  return PLURAL_CATEGORY.OTHER;}
 });
 }]);

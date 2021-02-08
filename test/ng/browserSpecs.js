@@ -11,8 +11,9 @@ function MockWindow(options) {
   }
   var events = {};
   var timeouts = this.timeouts = [];
-  var locationHref = 'http://server/';
-  var committedHref = 'http://server/';
+  var locationHref = window.document.createElement('a');
+  var committedHref = window.document.createElement('a');
+  locationHref.href = committedHref.href = 'http://server/';
   var mockWindow = this;
   var msie = options.msie;
   var ieState;
@@ -34,9 +35,9 @@ function MockWindow(options) {
     timeouts[id] = noop;
   };
 
-  this.setTimeout.flush = function() {
-    var length = timeouts.length;
-    while (length-- > 0) timeouts.shift()();
+  this.setTimeout.flush = function(count) {
+    count = count || timeouts.length;
+    while (count-- > 0) timeouts.shift()();
   };
 
   this.addEventListener = function(name, listener) {
@@ -48,34 +49,40 @@ function MockWindow(options) {
 
   this.fire = function(name) {
     forEach(events[name], function(fn) {
-      fn({type: name}); // type to make jQuery happy
+      // type/target to make jQuery happy
+      fn({
+        type: name,
+        target: {
+          nodeType: 1
+        }
+      });
     });
   };
 
   this.location = {
     get href() {
-      return committedHref;
+      return committedHref.href;
     },
     set href(value) {
-      locationHref = value;
+      locationHref.href = value;
       mockWindow.history.state = null;
       historyEntriesLength++;
       if (!options.updateAsync) this.flushHref();
     },
     get hash() {
-      return getHash(committedHref);
+      return getHash(committedHref.href);
     },
     set hash(value) {
-      locationHref = replaceHash(locationHref, value);
+      locationHref.href = replaceHash(locationHref.href, value);
       if (!options.updateAsync) this.flushHref();
     },
     replace: function(url) {
-      locationHref = url;
+      locationHref.href = url;
       mockWindow.history.state = null;
       if (!options.updateAsync) this.flushHref();
     },
     flushHref: function() {
-      committedHref = locationHref;
+      committedHref.href = locationHref.href;
     }
   };
 
@@ -85,8 +92,13 @@ function MockWindow(options) {
       historyEntriesLength++;
     },
     replaceState: function(state, title, url) {
-      locationHref = url;
+      locationHref.href = url;
+      if (!options.updateAsync) committedHref.href = locationHref.href;
       mockWindow.history.state = copy(state);
+      if (!options.updateAsync) this.flushHref();
+    },
+    flushHref: function() {
+      committedHref.href = locationHref.href;
     }
   };
   // IE 10-11 deserialize history.state on each read making subsequent reads
@@ -115,10 +127,10 @@ function MockDocument() {
   this.basePath = '/';
 
   this.find = function(name) {
-    if (name == 'base') {
+    if (name === 'base') {
       return {
         attr: function(name) {
-          if (name == 'href') {
+          if (name === 'href') {
             return self.basePath;
           } else {
             throw new Error(name);
@@ -132,24 +144,26 @@ function MockDocument() {
 }
 
 describe('browser', function() {
-  /* global Browser: false */
-  var browser, fakeWindow, fakeDocument, fakeLog, logs, scripts, removedScripts;
+  /* global Browser: false, TaskTracker: false */
+  var browser, fakeWindow, fakeDocument, fakeLog, logs, taskTrackerFactory;
 
   beforeEach(function() {
-    scripts = [];
-    removedScripts = [];
     sniffer = {history: true};
     fakeWindow = new MockWindow();
     fakeDocument = new MockDocument();
+    taskTrackerFactory = function(log) { return new TaskTracker(log); };
 
     logs = {log:[], warn:[], info:[], error:[]};
 
-    fakeLog = {log: function() { logs.log.push(slice.call(arguments)); },
-                   warn: function() { logs.warn.push(slice.call(arguments)); },
-                   info: function() { logs.info.push(slice.call(arguments)); },
-                   error: function() { logs.error.push(slice.call(arguments)); }};
+    fakeLog = {
+      log: function() { logs.log.push(slice.call(arguments)); },
+      warn: function() { logs.warn.push(slice.call(arguments)); },
+      info: function() { logs.info.push(slice.call(arguments)); },
+      error: function() { logs.error.push(slice.call(arguments)); }
+    };
 
-    browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+
+    browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
   });
 
   describe('MockBrowser', function() {
@@ -189,7 +203,7 @@ describe('browser', function() {
 
           fakeWindow = new MockWindow({msie: msie});
           fakeWindow.location.state = {prop: 'val'};
-          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
 
           browser.url(fakeWindow.location.href, false, {prop: 'val'});
           if (msie) {
@@ -203,17 +217,71 @@ describe('browser', function() {
     }
   });
 
-  describe('outstanding requests', function() {
-    it('should process callbacks immedietly with no outstanding requests', function() {
+
+  describe('notifyWhenNoOutstandingRequests', function() {
+    it('should invoke callbacks immediately if there are no pending tasks', function() {
       var callback = jasmine.createSpy('callback');
       browser.notifyWhenNoOutstandingRequests(callback);
       expect(callback).toHaveBeenCalled();
     });
+
+
+    it('should invoke callbacks immediately if there are no pending tasks (for specific task-type)',
+      function() {
+        var callbackAll = jasmine.createSpy('callbackAll');
+        var callbackFoo = jasmine.createSpy('callbackFoo');
+
+        browser.$$incOutstandingRequestCount();
+        browser.notifyWhenNoOutstandingRequests(callbackAll);
+        browser.notifyWhenNoOutstandingRequests(callbackFoo, 'foo');
+
+        expect(callbackAll).not.toHaveBeenCalled();
+        expect(callbackFoo).toHaveBeenCalled();
+      }
+    );
+
+
+    it('should invoke callbacks as soon as there are no pending tasks', function() {
+      var callback = jasmine.createSpy('callback');
+
+      browser.$$incOutstandingRequestCount();
+      browser.notifyWhenNoOutstandingRequests(callback);
+      expect(callback).not.toHaveBeenCalled();
+
+      browser.$$completeOutstandingRequest(noop);
+      expect(callback).toHaveBeenCalled();
+    });
+
+
+    it('should invoke callbacks as soon as there are no pending tasks (for specific task-type)',
+      function() {
+        var callbackAll = jasmine.createSpy('callbackAll');
+        var callbackFoo = jasmine.createSpy('callbackFoo');
+
+        browser.$$incOutstandingRequestCount();
+        browser.$$incOutstandingRequestCount('foo');
+        browser.notifyWhenNoOutstandingRequests(callbackAll);
+        browser.notifyWhenNoOutstandingRequests(callbackFoo, 'foo');
+
+        expect(callbackAll).not.toHaveBeenCalled();
+        expect(callbackFoo).not.toHaveBeenCalled();
+
+        browser.$$completeOutstandingRequest(noop, 'foo');
+
+        expect(callbackAll).not.toHaveBeenCalled();
+        expect(callbackFoo).toHaveBeenCalledOnce();
+
+        browser.$$completeOutstandingRequest(noop);
+
+        expect(callbackAll).toHaveBeenCalledOnce();
+        expect(callbackFoo).toHaveBeenCalledOnce();
+      }
+    );
   });
 
 
   describe('defer', function() {
-    it('should execute fn asynchroniously via setTimeout', function() {
+    it('should execute fn asynchronously via setTimeout', function() {
       var callback = jasmine.createSpy('deferred');
 
       browser.defer(callback);
@@ -225,13 +293,36 @@ describe('browser', function() {
 
 
     it('should update outstandingRequests counter', function() {
-      var callback = jasmine.createSpy('deferred');
+      var noPendingTasksSpy = jasmine.createSpy('noPendingTasks');
 
-      browser.defer(callback);
-      expect(callback).not.toHaveBeenCalled();
+      browser.defer(noop);
+      browser.notifyWhenNoOutstandingRequests(noPendingTasksSpy);
+      expect(noPendingTasksSpy).not.toHaveBeenCalled();
 
       fakeWindow.setTimeout.flush();
-      expect(callback).toHaveBeenCalledOnce();
+      expect(noPendingTasksSpy).toHaveBeenCalledOnce();
+    });
+
+
+    it('should update outstandingRequests counter (for specific task-type)', function() {
+      var noPendingFooTasksSpy = jasmine.createSpy('noPendingFooTasks');
+      var noPendingTasksSpy = jasmine.createSpy('noPendingTasks');
+
+      browser.defer(noop, 0, 'foo');
+      browser.defer(noop, 0, 'bar');
+
+      browser.notifyWhenNoOutstandingRequests(noPendingFooTasksSpy, 'foo');
+      browser.notifyWhenNoOutstandingRequests(noPendingTasksSpy);
+      expect(noPendingFooTasksSpy).not.toHaveBeenCalled();
+      expect(noPendingTasksSpy).not.toHaveBeenCalled();
+
+      fakeWindow.setTimeout.flush(1);
+      expect(noPendingFooTasksSpy).toHaveBeenCalledOnce();
+      expect(noPendingTasksSpy).not.toHaveBeenCalled();
+
+      fakeWindow.setTimeout.flush(1);
+      expect(noPendingFooTasksSpy).toHaveBeenCalledOnce();
+      expect(noPendingTasksSpy).toHaveBeenCalledOnce();
     });
 
 
@@ -259,6 +350,40 @@ describe('browser', function() {
         expect(log).toEqual(['ok']);
         expect(browser.defer.cancel(deferId2)).toBe(false);
       });
+
+
+      it('should update outstandingRequests counter', function() {
+        var noPendingTasksSpy = jasmine.createSpy('noPendingTasks');
+        var deferId = browser.defer(noop);
+
+        browser.notifyWhenNoOutstandingRequests(noPendingTasksSpy);
+        expect(noPendingTasksSpy).not.toHaveBeenCalled();
+
+        browser.defer.cancel(deferId);
+        expect(noPendingTasksSpy).toHaveBeenCalledOnce();
+      });
+
+
+      it('should update outstandingRequests counter (for specific task-type)', function() {
+        var noPendingFooTasksSpy = jasmine.createSpy('noPendingFooTasks');
+        var noPendingTasksSpy = jasmine.createSpy('noPendingTasks');
+
+        var deferId1 = browser.defer(noop, 0, 'foo');
+        var deferId2 = browser.defer(noop, 0, 'bar');
+
+        browser.notifyWhenNoOutstandingRequests(noPendingFooTasksSpy, 'foo');
+        browser.notifyWhenNoOutstandingRequests(noPendingTasksSpy);
+        expect(noPendingFooTasksSpy).not.toHaveBeenCalled();
+        expect(noPendingTasksSpy).not.toHaveBeenCalled();
+
+        browser.defer.cancel(deferId1);
+        expect(noPendingFooTasksSpy).toHaveBeenCalledOnce();
+        expect(noPendingTasksSpy).not.toHaveBeenCalled();
+
+        browser.defer.cancel(deferId2);
+        expect(noPendingFooTasksSpy).toHaveBeenCalledOnce();
+        expect(noPendingTasksSpy).toHaveBeenCalledOnce();
+      });
     });
   });
 
@@ -274,10 +399,18 @@ describe('browser', function() {
 
     it('should return current location.href', function() {
       fakeWindow.location.href = 'http://test.com';
-      expect(browser.url()).toEqual('http://test.com');
+      expect(browser.url()).toEqual('http://test.com/');
 
       fakeWindow.location.href = 'https://another.com';
-      expect(browser.url()).toEqual('https://another.com');
+      expect(browser.url()).toEqual('https://another.com/');
+    });
+
+    it('should strip an empty hash fragment', function() {
+      fakeWindow.location.href = 'http://test.com/#';
+      expect(browser.url()).toEqual('http://test.com/');
+
+      fakeWindow.location.href = 'https://another.com/#foo';
+      expect(browser.url()).toEqual('https://another.com/#foo');
     });
 
     it('should use history.pushState when available', function() {
@@ -285,7 +418,7 @@ describe('browser', function() {
       browser.url('http://new.org');
 
       expect(pushState).toHaveBeenCalledOnce();
-      expect(pushState.argsForCall[0][2]).toEqual('http://new.org');
+      expect(pushState.calls.argsFor(0)[2]).toEqual('http://new.org/');
 
       expect(replaceState).not.toHaveBeenCalled();
       expect(locationReplace).not.toHaveBeenCalled();
@@ -297,7 +430,7 @@ describe('browser', function() {
       browser.url('http://new.org', true);
 
       expect(replaceState).toHaveBeenCalledOnce();
-      expect(replaceState.argsForCall[0][2]).toEqual('http://new.org');
+      expect(replaceState.calls.argsFor(0)[2]).toEqual('http://new.org/');
 
       expect(pushState).not.toHaveBeenCalled();
       expect(locationReplace).not.toHaveBeenCalled();
@@ -308,7 +441,7 @@ describe('browser', function() {
       sniffer.history = false;
       browser.url('http://new.org');
 
-      expect(fakeWindow.location.href).toEqual('http://new.org');
+      expect(fakeWindow.location.href).toEqual('http://new.org/');
 
       expect(pushState).not.toHaveBeenCalled();
       expect(replaceState).not.toHaveBeenCalled();
@@ -326,7 +459,7 @@ describe('browser', function() {
       expect(locationReplace).not.toHaveBeenCalled();
     });
 
-    it("should retain the # character when the only change is clearing the hash fragment, to prevent page reload", function() {
+    it('should retain the # character when the only change is clearing the hash fragment, to prevent page reload', function() {
       sniffer.history = true;
 
       browser.url('http://server/#123');
@@ -341,7 +474,7 @@ describe('browser', function() {
       sniffer.history = false;
       browser.url('http://new.org', true);
 
-      expect(locationReplace).toHaveBeenCalledWith('http://new.org');
+      expect(locationReplace).toHaveBeenCalledWith('http://new.org/');
 
       expect(pushState).not.toHaveBeenCalled();
       expect(replaceState).not.toHaveBeenCalled();
@@ -372,17 +505,12 @@ describe('browser', function() {
       expect(browser.url('http://any.com', true, state).url('http://any.com', true, state)).toBe(browser);
     });
 
-    it('should decode single quotes to work around FF bug 407273', function() {
-      fakeWindow.location.href = "http://ff-bug/?single%27quote";
-      expect(browser.url()).toBe("http://ff-bug/?single'quote");
-    });
-
     it('should not set URL when the URL is already set', function() {
       var current = fakeWindow.location.href;
       sniffer.history = false;
-      fakeWindow.location.href = 'dontchange';
+      fakeWindow.location.href = 'http://dontchange/';
       browser.url(current);
-      expect(fakeWindow.location.href).toBe('dontchange');
+      expect(fakeWindow.location.href).toBe('http://dontchange/');
     });
 
     it('should not read out location.href if a reload was triggered but still allow to change the url', function() {
@@ -398,7 +526,7 @@ describe('browser', function() {
       expect(fakeWindow.location.href).toBe('http://server/someOtherUrl');
     });
 
-    it('assumes that changes to location.hash occur in sync', function() {
+    it('assumes that changes to location.hash occur in sync', function(done) {
       // This is an asynchronous integration test that changes the
       // hash in all possible ways and checks
       // - whether the change to the hash can be read out in sync
@@ -407,7 +535,8 @@ describe('browser', function() {
           $realWin = jqLite(realWin),
           hashInHashChangeEvent = [];
 
-      runs(function() {
+      var job = createAsync(done);
+      job.runs(function() {
         $realWin.on('hashchange', hashListener);
 
         realWin.location.hash = '1';
@@ -416,21 +545,56 @@ describe('browser', function() {
         realWin.location.assign(realWin.location.href + '4');
 
         expect(realWin.location.hash).toBe('#1234');
-      });
-      waitsFor(function() {
+      })
+      .waitsFor(function() {
         return hashInHashChangeEvent.length > 3;
-      });
-      runs(function() {
+      })
+      .runs(function() {
         $realWin.off('hashchange', hashListener);
 
         forEach(hashInHashChangeEvent, function(hash) {
           expect(hash).toBe('#1234');
         });
-      });
+      }).done();
+      job.start();
 
       function hashListener() {
         hashInHashChangeEvent.push(realWin.location.hash);
       }
+    });
+
+  });
+
+  describe('url (with ie 11 weirdnesses)', function() {
+
+    it('url() should actually set the url, even if IE 11 is weird and replaces HTML entities in the URL', function() {
+      // this test can not be expressed with the Jasmine spies in the previous describe block, because $browser.url()
+      // needs to observe the change to location.href during its invocation to enter the failing code path, but the spies
+      // are not callThrough
+
+      sniffer.history = true;
+      var originalReplace = fakeWindow.location.replace;
+      fakeWindow.location.replace = function(url) {
+        url = url.replace('&not', '¬');
+        // I really don't know why IE 11 (sometimes) does this, but I am not the only one to notice:
+        // https://connect.microsoft.com/IE/feedback/details/1040980/bug-in-ie-which-interprets-document-location-href-as-html
+        originalReplace.call(this, url);
+      };
+
+      // the initial URL contains a lengthy oauth token in the hash
+      var initialUrl = 'http://test.com/oauthcallback#state=xxx%3D&not-before-policy=0';
+      fakeWindow.location.href = initialUrl;
+      browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
+
+      // somehow, $location gets a version of this url where the = is no longer escaped, and tells the browser:
+      var initialUrlFixedByLocation = initialUrl.replace('%3D', '=');
+      browser.url(initialUrlFixedByLocation, true, null);
+      expect(browser.url()).toEqual(initialUrlFixedByLocation);
+
+      // a little later (but in the same digest cycle) the view asks $location to replace the url, which tells $browser
+      var secondUrl = 'http://test.com/otherView';
+      browser.url(secondUrl, true, null);
+      expect(browser.url()).toEqual(secondUrl);
     });
 
   });
@@ -451,11 +615,11 @@ describe('browser', function() {
 
           fakeWindow = new MockWindow({msie: options.msie});
           currentHref = fakeWindow.location.href;
-          pushState = spyOn(fakeWindow.history, 'pushState').andCallThrough();
-          replaceState = spyOn(fakeWindow.history, 'replaceState').andCallThrough();
-          locationReplace = spyOn(fakeWindow.location, 'replace').andCallThrough();
+          pushState = spyOn(fakeWindow.history, 'pushState').and.callThrough();
+          replaceState = spyOn(fakeWindow.history, 'replaceState').and.callThrough();
+          locationReplace = spyOn(fakeWindow.location, 'replace').and.callThrough();
 
-          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
           browser.onUrlChange(function() {});
         });
 
@@ -516,14 +680,81 @@ describe('browser', function() {
         it('should not do pushState with the same URL and state from $browser.state()', function() {
           browser.url(currentHref, false, {prop: 'val'});
 
-          pushState.reset();
-          replaceState.reset();
-          locationReplace.reset();
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
 
           browser.url(currentHref, false, browser.state());
           expect(pushState).not.toHaveBeenCalled();
           expect(replaceState).not.toHaveBeenCalled();
           expect(locationReplace).not.toHaveBeenCalled();
+        });
+
+        it('should not do pushState with a URL using relative protocol', function() {
+          browser.url('http://server/');
+
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
+
+          browser.url('//server');
+          expect(pushState).not.toHaveBeenCalled();
+          expect(replaceState).not.toHaveBeenCalled();
+          expect(locationReplace).not.toHaveBeenCalled();
+        });
+
+        it('should not do pushState with a URL only adding a trailing slash after domain', function() {
+          // A domain without a trailing /
+          browser.url('http://server');
+
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
+
+          // A domain from something such as window.location.href with a trailing slash
+          browser.url('http://server/');
+          expect(pushState).not.toHaveBeenCalled();
+          expect(replaceState).not.toHaveBeenCalled();
+          expect(locationReplace).not.toHaveBeenCalled();
+        });
+
+        it('should not do pushState with a URL only removing a trailing slash after domain', function() {
+          // A domain from something such as window.location.href with a trailing slash
+          browser.url('http://server/');
+
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
+
+          // A domain without a trailing /
+          browser.url('http://server');
+          expect(pushState).not.toHaveBeenCalled();
+          expect(replaceState).not.toHaveBeenCalled();
+          expect(locationReplace).not.toHaveBeenCalled();
+        });
+
+        it('should do pushState with a URL only adding a trailing slash after the path', function() {
+          browser.url('http://server/foo');
+
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
+
+          browser.url('http://server/foo/');
+          expect(pushState).toHaveBeenCalledOnce();
+          expect(fakeWindow.location.href).toEqual('http://server/foo/');
+        });
+
+        it('should do pushState with a URL only removing a trailing slash after the path', function() {
+          browser.url('http://server/foo/');
+
+          pushState.calls.reset();
+          replaceState.calls.reset();
+          locationReplace.calls.reset();
+
+          browser.url('http://server/foo');
+          expect(pushState).toHaveBeenCalledOnce();
+          expect(fakeWindow.location.href).toEqual('http://server/foo');
         });
       };
     }
@@ -537,14 +768,37 @@ describe('browser', function() {
       currentHref = fakeWindow.location.href;
     });
 
+    it('should not access `history.state` when `$sniffer.history` is false', function() {
+      // In the context of a Chrome Packaged App, although `history.state` is present, accessing it
+      // is not allowed and logs an error in the console. We should not try to access
+      // `history.state` in contexts where `$sniffer.history` is false.
+
+      var historyStateAccessed = false;
+      var mockSniffer = {history: false};
+      var mockWindow = new MockWindow();
+
+      var _state = mockWindow.history.state;
+      Object.defineProperty(mockWindow.history, 'state', {
+        get: function() {
+          historyStateAccessed = true;
+          return _state;
+        }
+      });
+
+      var browser = new Browser(mockWindow, fakeDocument, fakeLog, mockSniffer, taskTrackerFactory);
+
+      expect(historyStateAccessed).toBe(false);
+    });
+
     describe('in IE', runTests({msie: true}));
     describe('not in IE', runTests({msie: false}));
+
 
     function runTests(options) {
       return function() {
         beforeEach(function() {
           fakeWindow = new MockWindow({msie: options.msie});
-          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+          browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
         });
 
         it('should return history.state', function() {
@@ -626,7 +880,7 @@ describe('browser', function() {
     it('should not fire urlChange if changed by browser.url method', function() {
       sniffer.history = false;
       browser.onUrlChange(callback);
-      browser.url('http://new.com');
+      browser.url('http://new.com/');
 
       fakeWindow.fire('hashchange');
       expect(callback).not.toHaveBeenCalled();
@@ -647,7 +901,7 @@ describe('browser', function() {
         return function() {
           beforeEach(function() {
             fakeWindow = new MockWindow({msie: options.msie});
-            browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+            browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
           });
 
           it('should fire onUrlChange listeners only once if both popstate and hashchange triggered', function() {
@@ -663,7 +917,7 @@ describe('browser', function() {
     });
 
 
-    it("should stop calling callbacks when application has been torn down", function() {
+    it('should stop calling callbacks when application has been torn down', function() {
       sniffer.history = true;
       browser.onUrlChange(callback);
       fakeWindow.location.href = 'http://server/new';
@@ -685,7 +939,7 @@ describe('browser', function() {
     var jqDocHead;
 
     beforeEach(function() {
-      jqDocHead = jqLite(document).find('head');
+      jqDocHead = jqLite(window.document).find('head');
     });
 
     it('should return value from <base href>', function() {
@@ -716,14 +970,14 @@ describe('browser', function() {
 
     function setup(options) {
       fakeWindow = new MockWindow(options);
-      browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer);
+      browser = new Browser(fakeWindow, fakeDocument, fakeLog, sniffer, taskTrackerFactory);
 
       module(function($provide, $locationProvider) {
 
-        spyOn(fakeWindow.history, 'pushState').andCallFake(function(stateObj, title, newUrl) {
+        spyOn(fakeWindow.history, 'pushState').and.callFake(function(stateObj, title, newUrl) {
           fakeWindow.location.href = newUrl;
         });
-        spyOn(fakeWindow.location, 'replace').andCallFake(function(newUrl) {
+        spyOn(fakeWindow.location, 'replace').and.callFake(function(newUrl) {
           fakeWindow.location.href = newUrl;
         });
         $provide.value('$browser', browser);
@@ -735,7 +989,7 @@ describe('browser', function() {
       });
     }
 
-    describe('update $location when it was changed outside of Angular in sync ' +
+    describe('update $location when it was changed outside of AngularJS in sync ' +
        'before $digest was called', function() {
 
       it('should work with no history support, no html5Mode', function() {
@@ -747,9 +1001,9 @@ describe('browser', function() {
           $rootScope.$apply(function() {
             $location.path('/initialPath');
           });
-          expect(fakeWindow.location.href).toBe('http://server/#/initialPath');
+          expect(fakeWindow.location.href).toBe('http://server/#!/initialPath');
 
-          fakeWindow.location.href = 'http://server/#/someTestHash';
+          fakeWindow.location.href = 'http://server/#!/someTestHash';
 
           $rootScope.$digest();
 
@@ -766,9 +1020,9 @@ describe('browser', function() {
           $rootScope.$apply(function() {
             $location.path('/initialPath');
           });
-          expect(fakeWindow.location.href).toBe('http://server/#/initialPath');
+          expect(fakeWindow.location.href).toBe('http://server/#!/initialPath');
 
-          fakeWindow.location.href = 'http://server/#/someTestHash';
+          fakeWindow.location.href = 'http://server/#!/someTestHash';
 
           $rootScope.$digest();
 
@@ -785,9 +1039,9 @@ describe('browser', function() {
           $rootScope.$apply(function() {
             $location.path('/initialPath');
           });
-          expect(fakeWindow.location.href).toBe('http://server/#/initialPath');
+          expect(fakeWindow.location.href).toBe('http://server/#!/initialPath');
 
-          fakeWindow.location.href = 'http://server/#/someTestHash';
+          fakeWindow.location.href = 'http://server/#!/someTestHash';
 
           $rootScope.$digest();
 
@@ -830,7 +1084,7 @@ describe('browser', function() {
         }
         return _url.call(this, newUrl, replace);
       };
-      spyOn(browser, 'url').andCallThrough();
+      spyOn(browser, 'url').and.callThrough();
       inject(function($rootScope, $location) {
         $rootScope.$digest();
         $rootScope.$digest();
@@ -838,7 +1092,7 @@ describe('browser', function() {
         $rootScope.$digest();
 
         // from $location for rewriting the initial url into a hash url
-        expect(browser.url).toHaveBeenCalledWith('http://server/#/some/deep/path', true);
+        expect(browser.url).toHaveBeenCalledWith('http://server/#!/some/deep/path', true);
         expect(changeUrlCount).toBe(1);
       });
 
@@ -854,12 +1108,12 @@ describe('browser', function() {
 
       inject(function($location, $rootScope) {
 
-        // Change the hash within Angular and check that we don't infinitely digest
+        // Change the hash within AngularJS and check that we don't infinitely digest
         $location.hash('newHash');
         expect(function() { $rootScope.$digest(); }).not.toThrow();
         expect($location.absUrl()).toEqual('http://server/#newHash');
 
-        // Now change the hash from outside Angular and check that $location updates correctly
+        // Now change the hash from outside AngularJS and check that $location updates correctly
         fakeWindow.location.hash = '#otherHash';
 
         // simulate next tick - since this browser doesn't update synchronously
@@ -867,6 +1121,32 @@ describe('browser', function() {
         fakeWindow.fire('hashchange');
 
         expect($location.absUrl()).toEqual('http://server/#otherHash');
+      });
+    });
+
+    // issue #16632
+    it('should not trigger `$locationChangeStart` more than once due to trailing `#`', function() {
+      setup({
+        history: true,
+        html5Mode: true
+      });
+
+      inject(function($flushPendingTasks, $location, $rootScope) {
+        $rootScope.$digest();
+
+        var spy = jasmine.createSpy('$locationChangeStart');
+        $rootScope.$on('$locationChangeStart', spy);
+
+        $rootScope.$evalAsync(function() {
+          fakeWindow.location.href += '#';
+        });
+        $rootScope.$digest();
+
+        expect(fakeWindow.location.href).toBe('http://server/#');
+        expect($location.absUrl()).toBe('http://server/');
+
+        expect(spy.calls.count()).toBe(0);
+        expect(spy).not.toHaveBeenCalled();
       });
     });
   });
@@ -880,7 +1160,7 @@ describe('browser', function() {
     it('should not interfere with legacy browser url replace behavior', function() {
       inject(function($rootScope) {
         var current = fakeWindow.location.href;
-        var newUrl = 'notyet';
+        var newUrl = 'http://notyet/';
         sniffer.history = false;
         expect(historyEntriesLength).toBe(1);
         browser.url(newUrl, true);
